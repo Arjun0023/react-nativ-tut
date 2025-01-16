@@ -9,13 +9,22 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSContactsUsageDescription": "Allow access to contacts to display your phone contacts in the app",
+        "LSApplicationQueriesSchemes": ["tel"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.CALL_PHONE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +40,12 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow access to your contacts to display them in the app"
         }
       ]
     ],
