@@ -1,7 +1,7 @@
 import { StyleSheet, TouchableOpacity, View, Platform, SafeAreaView,Text } from 'react-native';
 import React, { useState } from 'react';
 import * as Linking from 'expo-linking';
-
+import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -95,7 +95,7 @@ export default function PhoneScreen() {
                 !phoneNumber && styles.callButtonDisabled
               ]}
               disabled={!phoneNumber}>
-              <IconSymbol name="phone.fill" size={24} color="#fff" />
+              <Ionicons name="call" size={24} color="#fff" />
             </TouchableOpacity>
             
             {phoneNumber.length > 0 && (
@@ -106,8 +106,8 @@ export default function PhoneScreen() {
                   styles.deleteButton,
                   isDark ? styles.deleteButtonDark : styles.deleteButtonLight
                 ]}>
-                <IconSymbol 
-                  name="delete.left" 
+                <Ionicons 
+                  name="backspace" 
                   size={20} 
                   color={isDark ? '#fff' : '#666'} 
                 />
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     }),
   },
   callButton: {
-    backgroundColor: '#2ecc71',
+    backgroundColor: '#1de02a',
   },
   callButtonDisabled: {
     backgroundColor: '#a8e6bc',
