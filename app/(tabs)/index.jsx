@@ -22,7 +22,20 @@ export default function PhoneScreen() {
 
   const handleCall = () => {
     if (phoneNumber) {
-      Linking.openURL(`tel:${phoneNumber}`);
+      const phoneUrl = Platform.select({
+        ios: `tel:${phoneNumber}`,
+        // android: `tel:${phoneNumber}`,
+        // Alternative for Android if you want to force the dialer:
+        android: `tel://${phoneNumber}`
+      });
+  
+      Linking.openURL(phoneUrl).catch((err) => {
+        console.error('An error occurred while trying to make the call:', err);
+        // Fallback for devices that don't support tel: links
+        if (Platform.OS === 'android') {
+          Linking.openURL(`telprompt:${phoneNumber}`);
+        }
+      });
     }
   };
 
