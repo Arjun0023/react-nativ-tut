@@ -12,7 +12,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSContactsUsageDescription": "Allow access to contacts to display your phone contacts in the app",
-        "LSApplicationQueriesSchemes": ["tel"]
+        "LSApplicationQueriesSchemes": [
+          "tel"
+        ]
       }
     },
     "android": {
@@ -23,8 +25,13 @@
       "permissions": [
         "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS",
-        "android.permission.CALL_PHONE"
-      ]
+        "android.permission.CALL_PHONE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.myapp.tutorial"
     },
     "web": {
       "bundler": "metro",

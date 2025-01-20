@@ -1,43 +1,271 @@
 import { StyleSheet, TouchableOpacity, View, Platform, SafeAreaView,Text } from 'react-native';
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+import { AppState } from 'react-native';
 
 export default function PhoneScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-
+  const [recording, setRecording] = useState();
+const [recordings, setRecordings] = useState([]);
+const [isCallActive, setIsCallActive] = useState(false);
+const [permissionsResponse, setPermissionsResponse] = useState();
+const RECORDINGS_DIRECTORY = `${FileSystem.documentDirectory}recordings/`;
   const handleNumberPress = (num) => {
     setPhoneNumber(prev => prev + num);
   };
-
+  const initializeRecordingsDirectory = async () => {
+    const directoryInfo = await FileSystem.getInfoAsync(RECORDINGS_DIRECTORY);
+    if (!directoryInfo.exists) {
+      await FileSystem.makeDirectoryAsync(RECORDINGS_DIRECTORY, { intermediates: true });
+    }
+  };
+  
+  // Request permissions and initialize
+  const setupRecording = async () => {
+    try {
+      const audioPermission = await Audio.requestPermissionsAsync();
+      const mediaLibraryPermission = await MediaLibrary.requestPermissionsAsync();
+      
+      if (audioPermission.granted && mediaLibraryPermission.granted) {
+        await initializeRecordingsDirectory();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error setting up recording:', error);
+      return false;
+    }
+  };
+  
   const handleDelete = () => {
     setPhoneNumber(prev => prev.slice(0, -1));
   };
 
-  const handleCall = () => {
-    if (phoneNumber) {
-      const phoneUrl = Platform.select({
-        ios: `tel:${phoneNumber}`,
-        // android: `tel:${phoneNumber}`,
-        // Alternative for Android if you want to force the dialer:
-        android: `tel://${phoneNumber}`
+  // Configure audio recording
+  const startRecording = async () => {
+    try {
+      const hasPermissions = await setupRecording();
+      console.log('Permissions status:', hasPermissions);
+      
+      if (!hasPermissions) {
+        console.log('Permissions not granted');
+        return false;
+      }
+  
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: true,
+        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
+        interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
       });
   
-      Linking.openURL(phoneUrl).catch((err) => {
-        console.error('An error occurred while trying to make the call:', err);
-        // Fallback for devices that don't support tel: links
-        if (Platform.OS === 'android') {
-          Linking.openURL(`telprompt:${phoneNumber}`);
+      // Verify directory exists
+      const dirInfo = await FileSystem.getInfoAsync(RECORDINGS_DIRECTORY);
+      console.log('Directory info:', dirInfo);
+      
+      if (!dirInfo.exists) {
+        console.log('Creating directory...');
+        await FileSystem.makeDirectoryAsync(RECORDINGS_DIRECTORY, { intermediates: true });
+      }
+  
+      const recordingOptions = {
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        android: {
+          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
+          extension: '.m4a',
+          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+          // Add these specific settings for call recording
+          audioSource: Audio.RECORDING_OPTION_ANDROID_AUDIO_SOURCE_VOICE_COMMUNICATION,
+          maxFileSize: 1024 * 1024 * 10, // 10MB
+        },
+      };
+
+      // Generate filename with timestamp and phone number
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `${timestamp}_${phoneNumber}.m4a`;
+      const fileUri = `${RECORDINGS_DIRECTORY}${fileName}`;
+      console.log('Recording to file:', fileUri);
+
+      if (Platform.OS === 'android') {
+        try {
+          // This requires a custom native module
+          await NativeModules.CallRecordingModule.enableCallRecordingMode();
+        } catch (error) {
+          console.warn('Failed to enable call recording mode:', error);
         }
-      });
+      }
+      const { recording } = await Audio.Recording.createAsync(
+        recordingOptions,
+        (status) => console.log('Recording status:', status),
+        fileUri
+      );
+      
+      setRecording(recording);
+      console.log('Recording started successfully');
+      return true;
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      return false;
     }
   };
+  
+  // Update stopRecording function with better error handling
+  const stopRecording = async () => {
+    try {
+      if (!recording) {
+        console.log('No active recording to stop');
+        return;
+      }
+  
+      console.log('Stopping recording...');
+      await recording.stopAndUnloadAsync();
+      if (Platform.OS === 'android') {
+        try {
+          await NativeModules.CallRecordingModule.disableCallRecordingMode();
+        } catch (error) {
+          console.warn('Failed to disable call recording mode:', error);
+        }
+      }
+
+      const uri = recording.getURI();
+      console.log('Recording URI:', uri);
+      
+      if (uri) {
+        // Verify file exists
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        console.log('Recorded file info:', fileInfo);
+  
+        if (fileInfo.exists) {
+          // Save to media library
+          const asset = await MediaLibrary.createAssetAsync(uri);
+          console.log('Asset created:', asset);
+          
+          // Create album if it doesn't exist
+          const album = await MediaLibrary.getAlbumAsync('CallRecordings');
+          if (album === null) {
+            await MediaLibrary.createAlbumAsync('CallRecordings', asset, false);
+            console.log('New album created');
+          } else {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+            console.log('Added to existing album');
+          }
+          
+          // Update recordings list
+          setRecordings(prev => [...prev, {
+            uri,
+            fileName: uri.split('/').pop(),
+            timestamp: new Date().toISOString(),
+            phoneNumber
+          }]);
+          console.log('Recording saved successfully');
+        } else {
+          console.error('Recording file does not exist after saving');
+        }
+      } else {
+        console.error('No URI received from recording');
+      }
+      
+      setRecording(undefined);
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+    }
+  };
+  const loadRecordings = async () => {
+    try {
+      const files = await FileSystem.readDirectoryAsync(RECORDINGS_DIRECTORY);
+      const recordingsList = files.map(fileName => ({
+        uri: `${RECORDINGS_DIRECTORY}${fileName}`,
+        fileName,
+        timestamp: fileName.split('_')[0],
+        phoneNumber: fileName.split('_')[1].replace('.m4a', '')
+      }));
+      setRecordings(recordingsList);
+    } catch (error) {
+      console.error('Error loading recordings:', error);
+    }
+  };
+  
+  // Function to delete a recording
+  const deleteRecording = async (uri) => {
+    try {
+      await FileSystem.deleteAsync(uri);
+      setRecordings(prev => prev.filter(recording => recording.uri !== uri));
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+    }
+  };
+  
+  // Initialize on component mount
+  useEffect(() => {
+    setupRecording();
+    loadRecordings();
+    
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync();
+      }
+    };
+  }, []);
+  const handleCall = async () => {
+    if (phoneNumber) {
+      try {
+        if (Platform.OS === 'android') {
+          const recordingSetup = await startRecording();
+          console.log('Recording setup result:', recordingSetup);
+          setIsCallActive(true);
+        }
+  
+        const phoneUrl = Platform.select({
+          ios: `tel:${phoneNumber}`,
+          android: `tel://${phoneNumber}`
+        });
+  
+        // Add a listener for when the app comes back to foreground
+        const subscription = AppState.addEventListener('change', async (nextAppState) => {
+          if (nextAppState === 'active' && isCallActive) {
+            console.log('Call ended, stopping recording');
+            await stopRecording();
+            setIsCallActive(false);
+            subscription.remove();
+          }
+        });
+  
+        await Linking.openURL(phoneUrl);
+      } catch (err) {
+        console.error('Call error:', err);
+        if (recording) {
+          await stopRecording();
+        }
+        setIsCallActive(false);
+      }
+    }
+  };
+  useEffect(() => {
+    setupRecording();
+    loadRecordings();
+    
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync();
+      }
+    };
+  }, []);
+  console.log('Documents Directory:', FileSystem.documentDirectory);
+  console.log('External Directory:', FileSystem.getInfoAsync(FileSystem.documentDirectory));
 
   const renderDialButton = (num, letters = '') => (
     <TouchableOpacity
